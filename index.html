@@ -1,0 +1,475 @@
+def get_template():
+    return """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Ranking System</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto px-4 py-8">
+        <header class="mb-8">
+            <h1 class="text-3xl font-bold text-gray-800">AI Resume Ranking System</h1>
+            <p class="text-gray-600">Upload a job description and resumes to find the best matches</p>
+        </header>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-8">
+            <h2 class="text-xl font-semibold mb-4">Job Description</h2>
+            <form id="rankingForm" class="space-y-4" enctype="multipart/form-data">
+                <div>
+                    <label class="block text-gray-700 mb-2" for="jobDescription">Job Description</label>
+                    <textarea id="jobDescription" name="job_description" rows="6" 
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="Paste the job description here..."></textarea>
+                </div>
+                
+                <div>
+                    <label class="block text-gray-700 mb-2" for="resumeFiles">Resume Files</h3>
+                    <input type="file" id="resumeFiles" name="resumeFiles" multiple
+                        class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        accept=".pdf,.docx,.txt">
+                    <p class="text-sm text-gray-500 mt-1">Upload PDF, DOCX, or TXT files</p>
+                </div>
+
+                <div class="mt-4 border-t pt-4">
+                    <h3 class="text-lg font-medium mb-2">OR Upload Resume Dataset</h3>
+                    <div class="flex flex-col space-y-2">
+                        <label class="block text-gray-700 mb-1" for="datasetFile">Dataset File (CSV or JSON only)</label>
+                        <div class="flex space-x-2">
+                            <input type="file" id="datasetFile" name="datasetFile"
+                                class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                accept=".csv,.json">
+                            <select id="datasetFormat" name="datasetFormat" 
+                                class="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="csv">CSV</option>
+                                <option value="json">JSON</option>
+                            </select>
+                        </div>
+                        <p class="text-sm text-gray-500">Please select a .csv or .json file containing resume data</p>
+                    </div>
+                </div>
+                
+                <div class="flex justify-between">
+                    <button type="button" id="analyzeJobBtn" 
+                        class="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500">
+                        Analyze Job Only
+                    </button>
+                    <button type="submit" 
+                        class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        Rank Resumes
+                    </button>
+                </div>
+            </form>
+        </div>
+        
+        <div id="jobAnalysisSection" class="bg-white rounded-lg shadow-md p-6 mb-8 hidden">
+            <h2 class="text-xl font-semibold mb-4">Job Analysis</h2>
+            <div id="jobAnalysisContent" class="space-y-4"></div>
+        </div>
+        
+        <div id="resultsSection" class="bg-white rounded-lg shadow-md p-6 hidden">
+            <h2 class="text-xl font-semibold mb-4">Ranking Results</h2>
+            <div id="resultsContent"></div>
+        </div>
+        
+        <div id="loadingSection" class="text-center py-8 hidden">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+            <p class="mt-2 text-gray-600">Processing...</p>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const rankingForm = document.getElementById('rankingForm');
+            const analyzeJobBtn = document.getElementById('analyzeJobBtn');
+            const jobAnalysisSection = document.getElementById('jobAnalysisSection');
+            const jobAnalysisContent = document.getElementById('jobAnalysisContent');
+            const resultsSection = document.getElementById('resultsSection');
+            const resultsContent = document.getElementById('resultsContent');
+            const loadingSection = document.getElementById('loadingSection');
+            
+            // Handle form submission for full ranking
+            rankingForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const jobDescription = document.getElementById('jobDescription').value;
+                const resumeFiles = document.getElementById('resumeFiles').files;
+                const datasetFile = document.getElementById('datasetFile').files[0];
+                
+                if (!jobDescription) {
+                    alert('Please enter a job description');
+                    return;
+                }
+                
+                if (resumeFiles.length === 0 && !datasetFile) {
+                    alert('Please upload either individual resume files OR a dataset file');
+                    return;
+                }
+                
+                // Show loading indicator
+                loadingSection.classList.remove('hidden');
+                jobAnalysisSection.classList.add('hidden');
+                resultsSection.classList.add('hidden');
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('job_description', jobDescription);
+                
+                if (datasetFile) {
+                    // Dataset mode
+                    formData.append('datasetFile', datasetFile);
+                    const datasetFormat = document.getElementById('datasetFormat').value;
+                    formData.append('datasetFormat', datasetFormat);
+                    console.log("Uploading dataset file:", datasetFile.name, "Format:", datasetFormat);
+                } else {
+                    // Individual files mode
+                    for (let i = 0; i < resumeFiles.length; i++) {
+                        formData.append('resumeFiles', resumeFiles[i]);
+                        console.log("Uploading resume file:", resumeFiles[i].name);
+                    }
+                }
+                
+                try {
+                    // Log what we're sending
+                    console.log("Sending form with job description length:", jobDescription.length);
+                    console.log("Form data entries:");
+                    for (let pair of formData.entries()) {
+                        console.log(pair[0], pair[1] instanceof File ? pair[1].name : pair[1]);
+                    }
+                    
+                    // Send request to API
+                    const response = await fetch('/api/rank', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        const errorText = await response.text();
+                        throw new Error(`HTTP error! Status: ${response.status}, Message: ${errorText}`);
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Display job analysis
+                    displayJobAnalysis(data.job_analysis);
+                    
+                    // Display ranking results
+                    displayResults(data.results);
+                } catch (error) {
+                    console.error("Error:", error);
+                    alert(`Error: ${error.message}`);
+                } finally {
+                    // Hide loading indicator
+                    loadingSection.classList.add('hidden');
+                }
+            });
+            
+            // Handle job analysis only
+            analyzeJobBtn.addEventListener('click', async function() {
+                const jobDescription = document.getElementById('jobDescription').value;
+                
+                if (!jobDescription) {
+                    alert('Please enter a job description');
+                    return;
+                }
+                
+                // Show loading indicator
+                loadingSection.classList.remove('hidden');
+                jobAnalysisSection.classList.add('hidden');
+                resultsSection.classList.add('hidden');
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('job_description', jobDescription);
+                
+                try {
+                    // Send request to API
+                    const response = await fetch('/api/analyze-job', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        // Display job analysis
+                        displayJobAnalysis(data.job_analysis);
+                    } else {
+                        alert(`Error: ${data.error}`);
+                    }
+                } catch (error) {
+                    alert(`Error: ${error.message}`);
+                } finally {
+                    // Hide loading indicator
+                    loadingSection.classList.add('hidden');
+                }
+            });
+            
+            // Function to display job analysis
+            function displayJobAnalysis(jobAnalysis) {
+                jobAnalysisContent.innerHTML = '';
+                
+                // Create required skills section
+                const requiredSkillsSection = document.createElement('div');
+                requiredSkillsSection.innerHTML = `
+                    <h3 class="font-medium text-gray-800">Required Skills</h3>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        ${Object.entries(jobAnalysis.required_skills).map(([domain, skills]) => `
+                            <div class="p-2 border rounded">
+                                <p class="font-medium">${domain.replace('_', ' ')}</p>
+                                <p>${Object.keys(skills).join(', ')}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Create preferred skills section
+                const preferredSkillsSection = document.createElement('div');
+                preferredSkillsSection.innerHTML = `
+                    <h3 class="font-medium text-gray-800 mt-4">Preferred Skills</h3>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        ${Object.entries(jobAnalysis.preferred_skills).map(([domain, skills]) => `
+                            <div class="p-2 border rounded">
+                                <p class="font-medium">${domain.replace('_', ' ')}</p>
+                                <p>${Object.keys(skills).join(', ')}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Create requirements section
+                const requirementsSection = document.createElement('div');
+                requirementsSection.innerHTML = `
+                    <h3 class="font-medium text-gray-800 mt-4">Requirements</h3>
+                    <div class="mt-2 space-y-2">
+                        <p><strong>Experience:</strong> ${jobAnalysis.min_years_experience} years</p>
+                        <p><strong>Education:</strong> ${jobAnalysis.education_requirements.join(', ') || 'Not specified'}</p>
+                    </div>
+                `;
+                
+                // Create domain importance section
+                const domainSection = document.createElement('div');
+                domainSection.innerHTML = `
+                    <h3 class="font-medium text-gray-800 mt-4">Domain Importance</h3>
+                    <div class="mt-2 grid grid-cols-2 gap-2">
+                        ${Object.entries(jobAnalysis.domain_importance).map(([domain, importance]) => `
+                            <div class="p-2 border rounded">
+                                <p class="font-medium">${domain.replace('_', ' ')}</p>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${importance * 100}%"></div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                
+                // Add all sections to content
+                jobAnalysisContent.appendChild(requiredSkillsSection);
+                jobAnalysisContent.appendChild(preferredSkillsSection);
+                jobAnalysisContent.appendChild(requirementsSection);
+                jobAnalysisContent.appendChild(domainSection);
+                
+                // Show job analysis section
+                jobAnalysisSection.classList.remove('hidden');
+            }
+            
+            // Function to display results
+            function displayResults(results) {
+                resultsContent.innerHTML = '';
+                
+                if (results.length === 0) {
+                    resultsContent.innerHTML = '<p>No results found</p>';
+                    resultsSection.classList.remove('hidden');
+                    return;
+                }
+                
+                // Create table
+                const table = document.createElement('table');
+                table.className = 'min-w-full divide-y divide-gray-200';
+                
+                // Create table header
+                const thead = document.createElement('thead');
+                thead.className = 'bg-gray-50';
+                thead.innerHTML = `
+                    <tr>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resume</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Overall Score</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Skills Match</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Experience</th>
+                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
+                    </tr>
+                `;
+                
+                // Create table body
+                const tbody = document.createElement('tbody');
+                tbody.className = 'bg-white divide-y divide-gray-200';
+                
+                results.forEach((result, index) => {
+                    const tr = document.createElement('tr');
+                    if (index % 2 === 0) {
+                        tr.className = 'bg-white';
+                    } else {
+                        tr.className = 'bg-gray-50';
+                    }
+                    
+                    const requiredSkillsMatch = result.summary.matched_required_skills / 
+                                             (result.summary.total_required_skills || 1);
+                    
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${result.rank}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${result.file_name}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            <div class="flex items-center">
+                                <span class="mr-2 font-medium">${(result.final_score * 100).toFixed(0)}%</span>
+                                <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                    <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${result.final_score * 100}%"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ${result.summary.matched_required_skills}/${result.summary.total_required_skills}
+                            <div class="w-full bg-gray-200 rounded-full h-2.5">
+                                <div class="bg-green-600 h-2.5 rounded-full" style="width: ${requiredSkillsMatch * 100}%"></div>
+                            </div>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            ${result.summary.experience_years} yrs
+                            <span class="text-xs">(Required: ${result.summary.required_years})</span>
+                        </td>
+                        <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                            <button class="text-blue-600 hover:text-blue-900 show-details-btn" data-index="${index}">
+                                Show Details
+                            </button>
+                        </td>
+                    `;
+                    
+                    tbody.appendChild(tr);
+                    
+                    // Create details row (hidden by default)
+                    const detailsRow = document.createElement('tr');
+                    detailsRow.className = 'details-row hidden';
+                    detailsRow.setAttribute('data-index', index);
+                    
+                    const detailsCell = document.createElement('td');
+                    detailsCell.colSpan = 6;
+                    detailsCell.className = 'px-6 py-4';
+                    
+                    // Component scores
+                    const componentScores = document.createElement('div');
+                    componentScores.className = 'grid grid-cols-5 gap-4 mb-4';
+                    
+                    for (const [component, score] of Object.entries(result.component_scores)) {
+                        const scoreDiv = document.createElement('div');
+                        scoreDiv.innerHTML = `
+                            <p class="text-sm font-medium">${formatComponentName(component)}</p>
+                            <div class="flex items-center mt-1">
+                                <span class="mr-2 text-sm">${(score * 10).toFixed(1)}</span>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="bg-indigo-600 h-2 rounded-full" style="width: ${score * 10 * 10}%"></div>
+                                </div>
+                            </div>
+                        `;
+                        componentScores.appendChild(scoreDiv);
+                    }
+                    
+                    // Matched skills
+                    const matchedSkills = document.createElement('div');
+                    matchedSkills.className = 'mt-4';
+                    matchedSkills.innerHTML = `
+                        <h4 class="text-sm font-medium mb-2">Matched Required Skills</h4>
+                        <div class="flex flex-wrap gap-2">
+                            ${Object.entries(result.required_skills_match.matched_skills).flatMap(([domain, skills]) => 
+                                skills.map(skill => `
+                                    <span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                                        ${skill}
+                                    </span>
+                                `)
+                            ).join('')}
+                        </div>
+                        
+                        <h4 class="text-sm font-medium mt-4 mb-2">Missing Required Skills</h4>
+                        <div class="flex flex-wrap gap-2">
+                            ${Object.entries(result.required_skills_match.missing_skills).flatMap(([domain, skills]) => 
+                                skills.map(skill => `
+                                    <span class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                                        ${skill}
+                                    </span>
+                                `)
+                            ).join('')}
+                        </div>
+                    `;
+                    
+                    detailsCell.appendChild(componentScores);
+                    detailsCell.appendChild(matchedSkills);
+                    detailsRow.appendChild(detailsCell);
+                    tbody.appendChild(detailsRow);
+                });
+                
+                table.appendChild(thead);
+                table.appendChild(tbody);
+                resultsContent.appendChild(table);
+                
+                // Add event listeners for show details buttons
+                document.querySelectorAll('.show-details-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const index = this.getAttribute('data-index');
+                        const detailsRow = document.querySelector(`.details-row[data-index="${index}"]`);
+                        
+                        if (detailsRow.classList.contains('hidden')) {
+                            // Hide all detail rows
+                            document.querySelectorAll('.details-row').forEach(row => {
+                                row.classList.add('hidden');
+                            });
+                            
+                            // Show this detail row
+                            detailsRow.classList.remove('hidden');
+                            this.textContent = 'Hide Details';
+                        } else {
+                            detailsRow.classList.add('hidden');
+                            this.textContent = 'Show Details';
+                        }
+                    });
+                });
+                
+                // Show results section
+                resultsSection.classList.remove('hidden');
+            }
+            
+            // Helper function to format component names
+            function formatComponentName(name) {
+                return name
+                    .replace(/_/g, ' ')
+                    .split(' ')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+            }
+        });
+    </script>
+</body>
+</html>
+    """
+
+    <hr class="my-8">
+    <h2 class="text-xl font-bold mb-4">Alternative Direct Form (For Testing)</h2>
+    <form action="/api/rank" method="post" enctype="multipart/form-data" class="space-y-4 p-4 border rounded">
+      <div>
+        <label>Job Description</label>
+        <textarea name="job_description" rows="3" class="w-full border p-2">Test job description</textarea>
+      </div>
+      <div>
+        <label>Resume Files</label>
+        <input type="file" name="resumeFiles" multiple>
+      </div>
+      <div>
+        <label>OR Dataset</label>
+        <input type="file" name="datasetFile">
+        <select name="datasetFormat">
+          <option value="csv">CSV</option>
+          <option value="json">JSON</option>
+        </select>
+      </div>
+      <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded">Submit Direct</button>
+    </form>
